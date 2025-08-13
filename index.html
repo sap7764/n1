@@ -2,17 +2,191 @@
 <html>
   <head>
     <title>Mixed Reality App</title>
-    <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+    <script src="vendor/aframe.min.js"></script>
   </head>
   <body>
-    <a-scene>
-      <a-assets>
-        <a-asset-item id="duck" src="https://www.8thwall.com/playground/model-swap/assets/duck.glb"></a-asset-item>
-      </a-assets>
-
-      <a-entity gltf-model="#duck" position="0 0 -5"></a-entity>
-
+    <a-scene id="scene">
+      <a-camera>
+        <a-cursor></a-cursor>
+      </a-camera>
       <a-sky color="#ECECEC"></a-sky>
     </a-scene>
+
+    <div style="position: absolute; top: 20px; left: 20px; z-index: 1; display: flex; flex-direction: column; gap: 10px;">
+      <div>
+        <label for="model-input" style="background: #fff; padding: 10px; border-radius: 5px; cursor: pointer;">Add Model</label>
+        <input type="file" id="model-input" accept=".glb, .gltf" style="display: none;">
+      </div>
+      <div id="controls" style="background: rgba(255, 255, 255, 0.8); padding: 10px; border-radius: 5px;">
+        <strong>Controls (for selected)</strong><br>
+        Position X: <button id="posX-plus">+</button> <button id="posX-minus">-</button><br>
+        Position Z: <button id="posZ-plus">+</button> <button id="posZ-minus">-</button><br>
+        Rotation Y: <button id="rotY-plus">+</button> <button id="rotY-minus">-</button><br>
+        Scale: <button id="scale-plus">+</button> <button id="scale-minus">-</button>
+        <hr>
+        <button id="save-scene" style="width: 100%;">Save Scene</button>
+        <button id="clear-scene" style="width: 100%; margin-top: 5px;">Clear Saved Scene</button>
+      </div>
+    </div>
+
+    <script>
+      document.addEventListener('DOMContentLoaded', () => {
+        const sceneEl = document.getElementById('scene');
+        let selectedModel = null;
+        let db;
+
+        function initDB() {
+            const request = indexedDB.open('ModelSceneDB', 1);
+            request.onupgradeneeded = event => {
+                const db = event.target.result;
+                db.createObjectStore('models', { keyPath: 'id' });
+            };
+            request.onsuccess = event => {
+                db = event.target.result;
+                loadSceneLayout();
+            };
+            request.onerror = event => console.error("IndexedDB error:", event.target.errorCode);
+        }
+
+        function saveFileToDB(id, file, callback) {
+            if (!db) return;
+            const transaction = db.transaction(['models'], 'readwrite');
+            const store = transaction.objectStore('models');
+            store.put({ id: id, file: file });
+            transaction.oncomplete = () => callback();
+        }
+
+        function loadFileFromDB(id, callback) {
+            if (!db) return;
+            const transaction = db.transaction(['models'], 'readonly');
+            const store = transaction.objectStore('models');
+            const request = store.get(id);
+            request.onsuccess = () => callback(request.result ? request.result.file : null);
+        }
+
+        function addModel(file, transform, fileId) {
+            const modelURL = URL.createObjectURL(file);
+            const newModel = document.createElement('a-entity');
+            newModel.setAttribute('gltf-model', `url(${modelURL})`);
+            newModel.setAttribute('class', 'model');
+            newModel.dataset.fileId = fileId || `model_${Date.now()}`;
+
+            if (transform) {
+                newModel.setAttribute('position', transform.pos);
+                newModel.setAttribute('rotation', transform.rot);
+                newModel.setAttribute('scale', transform.scale);
+            } else {
+                newModel.setAttribute('position', { x: 0, y: 1, z: -3 });
+                saveFileToDB(newModel.dataset.fileId, file, () => console.log(`File ${newModel.dataset.fileId} saved.`));
+            }
+
+            newModel.addEventListener('click', evt => {
+                evt.stopPropagation();
+                setSelectedModel(newModel);
+            });
+            sceneEl.appendChild(newModel);
+            setSelectedModel(newModel);
+        }
+
+        function saveSceneLayout() {
+            const models = document.querySelectorAll('.model');
+            const sceneData = Array.from(models).map(modelEl => ({
+                fileId: modelEl.dataset.fileId,
+                pos: modelEl.getAttribute('position'),
+                rot: modelEl.getAttribute('rotation'),
+                scale: modelEl.getAttribute('scale') || {x: 1, y: 1, z: 1}
+            }));
+            localStorage.setItem('savedScene', JSON.stringify(sceneData));
+            alert('Scene Saved!');
+        }
+
+        function loadSceneLayout() {
+            const savedScene = localStorage.getItem('savedScene');
+            if (savedScene) {
+                const sceneData = JSON.parse(savedScene);
+                sceneData.forEach(modelData => {
+                    loadFileFromDB(modelData.fileId, file => {
+                        if (file) addModel(file, modelData, modelData.fileId);
+                    });
+                });
+            }
+        }
+
+        function clearSavedScene() {
+            localStorage.removeItem('savedScene');
+            if (db) {
+                const transaction = db.transaction(['models'], 'readwrite');
+                transaction.objectStore('models').clear();
+            }
+            alert('Saved scene cleared. Page will reload.');
+            window.location.reload();
+        }
+
+        const selectionRing = document.createElement('a-ring');
+        selectionRing.setAttribute('color', 'teal');
+        selectionRing.setAttribute('radius-inner', '0.5');
+        selectionRing.setAttribute('radius-outer', '0.6');
+        selectionRing.setAttribute('rotation', '-90 0 0');
+        selectionRing.setAttribute('visible', 'false');
+        sceneEl.appendChild(selectionRing);
+
+        function setSelectedModel(modelEl) {
+            selectedModel = modelEl;
+            if (modelEl) {
+                const pos = modelEl.getAttribute('position');
+                const scale = modelEl.getAttribute('scale') || {x: 1, y: 1, z: 1};
+                const baseRadius = 0.5;
+                const avgScale = (scale.x + scale.z) / 2;
+                selectionRing.setAttribute('position', { x: pos.x, y: 0.01, z: pos.z });
+                selectionRing.setAttribute('radius-inner', baseRadius * avgScale);
+                selectionRing.setAttribute('radius-outer', (baseRadius + 0.1) * avgScale);
+                selectionRing.setAttribute('visible', 'true');
+            } else {
+                selectionRing.setAttribute('visible', 'false');
+            }
+        }
+
+        const modelInput = document.getElementById('model-input');
+        modelInput.addEventListener('change', event => {
+            if (event.target.files.length > 0) {
+                addModel(event.target.files[0]);
+                event.target.value = '';
+            }
+        });
+
+        sceneEl.addEventListener('click', () => setSelectedModel(null));
+
+        document.getElementById('save-scene').addEventListener('click', saveSceneLayout);
+        document.getElementById('clear-scene').addEventListener('click', clearSavedScene);
+
+        const positionStep = 0.1, rotationStep = 15, scaleStep = 0.1;
+        function updateControl(attr, comp, val) {
+            if (!selectedModel) return;
+            const attribute = selectedModel.getAttribute(attr);
+            attribute[comp] += val;
+            selectedModel.setAttribute(attr, attribute);
+            setSelectedModel(selectedModel);
+        }
+        function updateScale(val) {
+            if (!selectedModel) return;
+            const scale = selectedModel.getAttribute('scale') || {x: 1, y: 1, z: 1};
+            if (scale.x + val < scaleStep) return;
+            scale.x += val; scale.y += val; scale.z += val;
+            selectedModel.setAttribute('scale', scale);
+            setSelectedModel(selectedModel);
+        }
+
+        document.getElementById('posX-plus').addEventListener('click', () => updateControl('position', 'x', positionStep));
+        document.getElementById('posX-minus').addEventListener('click', () => updateControl('position', 'x', -positionStep));
+        document.getElementById('posZ-plus').addEventListener('click', () => updateControl('position', 'z', positionStep));
+        document.getElementById('posZ-minus').addEventListener('click', () => updateControl('position', 'z', -positionStep));
+        document.getElementById('rotY-plus').addEventListener('click', () => updateControl('rotation', 'y', rotationStep));
+        document.getElementById('rotY-minus').addEventListener('click', () => updateControl('rotation', 'y', -rotationStep));
+        document.getElementById('scale-plus').addEventListener('click', () => updateScale(scaleStep));
+        document.getElementById('scale-minus').addEventListener('click', () => updateScale(-scaleStep));
+
+        initDB();
+      });
+    </script>
   </body>
 </html>
