@@ -1,29 +1,18 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Home</title>
-    <link rel="stylesheet" href="css/style.css">
-</head>
-<body>
-    <header>
-        <nav>
-            <ul>
-                <li><a href="index.html">Home</a></li>
-                <li><a href="about.html">About Us</a></li>
-                <li><a href="courses.html">Courses</a></li>
-                <li><a href="contact.html">Contact Us</a></li>
-            </ul>
-        </nav>
-    </header>
-    <main>
-        <h1>Welcome to Our College!</h1>
-        <p>Our college offers a wide range of courses and programs to help you achieve your academic and career goals. We are committed to providing high-quality education in a supportive and engaging environment.</p>
-        <a href="courses.html" class="cta-button">Learn More About Our Courses</a>
-    </main>
-    <footer>
-        <p>&copy; 2023 Our Website</p>
-    </footer>
-</body>
+<html>
+  <head>
+    <title>Mixed Reality App</title>
+    <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+  </head>
+  <body>
+    <a-scene>
+      <a-assets>
+        <a-asset-item id="duck" src="https://www.8thwall.com/playground/model-swap/assets/duck.glb"></a-asset-item>
+      </a-assets>
+
+      <a-entity gltf-model="#duck" position="0 0 -5"></a-entity>
+
+      <a-sky color="#ECECEC"></a-sky>
+    </a-scene>
+  </body>
 </html>
